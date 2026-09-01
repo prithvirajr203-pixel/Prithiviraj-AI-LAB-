@@ -1,91 +1,86 @@
 /**
- * Vercel Serverless Function: Chat
- *
- * This function handles all Groq API calls securely from the backend.
- * The frontend calls this endpoint to send messages and receive AI responses.
- *
- * Deployment (Vercel):
- * - Place this file at: api/chat.js
- * - Vercel automatically exposes it at: /api/chat
- * - Set GROQ_API_KEY in Vercel Project Settings -> Environment Variables
+ * Vercel Serverless Function
+ * Endpoint: /api/chat
  */
 
 export default async function handler(req, res) {
-  // Only allow POST requests
+  // Test endpoint
+  if (req.method === "GET") {
+    return res.status(200).json({
+      success: true,
+      message: "Chat API is working!",
+    });
+  }
+
+  // Only POST for actual chat
   if (req.method !== "POST") {
-    res.status(405).json({ error: "Method not allowed" });
-    return;
+    return res.status(405).json({
+      error: "Method not allowed",
+    });
   }
 
   try {
     const { messages } = req.body || {};
 
-    // Validate input
-    if (!messages || !Array.isArray(messages) || messages.length === 0) {
-      res.status(400).json({ error: "Messages array is required and must not be empty" });
-      return;
+    if (!Array.isArray(messages) || messages.length === 0) {
+      return res.status(400).json({
+        error: "Messages array is required and must not be empty",
+      });
     }
 
-    // Get API key from environment (set in Vercel dashboard)
     const apiKey = process.env.GROQ_API_KEY;
+
     if (!apiKey) {
-      console.error("GROQ_API_KEY not set in environment variables");
-      res.status(500).json({
-        error: "AI service is not configured. Please contact the portfolio owner.",
+      console.error("GROQ_API_KEY is missing");
+
+      return res.status(500).json({
+        error: "GROQ_API_KEY is not configured on Vercel",
       });
-      return;
     }
 
-    // Call Groq API
-    const groqResponse = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: "openai/gpt-oss-120b",
-        messages: messages,
-        temperature: 0.7,
-        max_tokens: 1024,
-        top_p: 0.9,
-      }),
-    });
-
-    if (!groqResponse.ok) {
-      const error = await groqResponse.json();
-      console.error("Groq API error:", error);
-
-      if (error.error?.code === "model_decommissioned") {
-        res.status(groqResponse.status).json({
-          error:
-            "The AI model being used has been updated. Please contact the portfolio owner to update it. Visit https://console.groq.com/docs/models for current available models.",
-          details: error.error?.message || "Model decommissioned",
-        });
-        return;
+    const groqResponse = await fetch(
+      "https://api.groq.com/openai/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: "openai/gpt-oss-120b",
+          messages,
+          temperature: 0.7,
+          max_tokens: 1024,
+          top_p: 0.9,
+        }),
       }
-
-      res.status(groqResponse.status).json({
-        error: "Sorry, I'm having trouble connecting to the AI service right now. Please try again in a moment.",
-        details: error.error?.message || "Unknown error",
-      });
-      return;
-    }
+    );
 
     const data = await groqResponse.json();
 
-    const assistantMessage =
-      data.choices?.[0]?.message?.content || "Sorry, I couldn't generate a response.";
+    if (!groqResponse.ok) {
+      console.error("Groq error:", data);
 
-    res.status(200).json({
+      return res.status(groqResponse.status).json({
+        error:
+          data?.error?.message ||
+          "Groq API request failed",
+      });
+    }
+
+    const assistantMessage =
+      data?.choices?.[0]?.message?.content ||
+      "Sorry, I couldn't generate a response.";
+
+    return res.status(200).json({
       success: true,
       message: assistantMessage,
     });
   } catch (error) {
-    console.error("Error in chat function:", error);
+    console.error("Chat API error:", error);
 
-    res.status(500).json({
-      error: "An error occurred while processing your request. Please try again.",
+    return res.status(500).json({
+      error: "An error occurred while processing your request.",
     });
   }
 }
